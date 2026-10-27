@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>مُلخِّص الاجتماعات</title>
+<style>
+:root{--bg:#f5f6fa;--card:#fff;--tx:#1b2230;--mut:#677087;--pri:#2b59e6;--red:#dc3b41;--ok:#1a9d5a;--warn:#d9822b;--bd:#e2e5ee}
+@media(prefers-color-scheme:dark){:root{--bg:#11141b;--card:#1a1e28;--tx:#edf0f6;--mut:#99a2b6;--bd:#2b3140}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.8 "Segoe UI",Tahoma,system-ui,sans-serif}
+.wrap{max-width:760px;margin:0 auto;padding:20px 16px 60px}
+h1{font-size:1.5rem;margin:0}
+.sub,.note{color:var(--mut);font-size:.9rem;margin:4px 0}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:18px;margin-top:14px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.between{justify-content:space-between}
+button{font:inherit;border:0;border-radius:10px;padding:10px 18px;cursor:pointer;background:var(--pri);color:#fff}
+button.sec{background:transparent;color:var(--tx);border:1px solid var(--bd)}
+button.rec{background:var(--red)}
+button:disabled{opacity:.5;cursor:not-allowed}
+input,select,textarea{font:inherit;padding:9px 12px;border-radius:8px;border:1px solid var(--bd);background:var(--bg);color:var(--tx);width:100%}
+select{width:auto}
+textarea{min-height:200px;resize:vertical}
+label{display:block;margin-top:12px;font-weight:600;font-size:.92rem}
+#timer{font-size:2rem;font-weight:600;font-variant-numeric:tabular-nums}
+.meter{height:8px;background:var(--bd);border-radius:6px;overflow:hidden;margin-top:14px}
+.meter>div{height:100%;width:0;background:var(--pri);transition:width .08s}
+.badge{display:inline-block;padding:2px 12px;border-radius:20px;font-size:.85rem;border:1px solid currentColor}
+.badge.ok{color:var(--ok)}.badge.warn{color:var(--warn)}
+.hide{display:none!important}
+#msg{min-height:1.5em;margin:10px 0 0}
+#msg.err{color:var(--red)}
+audio{width:100%;margin-top:8px}
+#report{outline:0}
+#report h1{font-size:1.4rem}
+#report h2{font-size:1.1rem;border-bottom:2px solid var(--pri);padding-bottom:4px;margin-top:22px}
+#report li{margin-bottom:4px}
+.raw{white-space:pre-wrap;color:var(--mut);font-size:.92rem}
+@media print{
+ body{background:#fff;color:#000}
+ .no-print{display:none!important}
+ #outCard{border:0;padding:0;margin:0}
+ #report h2{border-color:#000}
+ .raw{color:#333}
+ @page{margin:18mm}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+ <header class="no-print">
+  <h1>🎙️ مُلخِّص الاجتماعات</h1>
+  <p class="sub">سجّل الاجتماع، راجع النص، واحصل على تقرير جاهز للطباعة PDF.</p>
+ </header>
+
+ <section class="card no-print">
+  <details id="settings">
+   <summary>⚙️ الإعدادات</summary>
+   <label>خدمة التفريغ الصوتي (Whisper)</label>
+   <div class="row">
+    <select id="provider"><option value="groq">Groq</option><option value="openai">OpenAI</option></select>
+    <input id="tkey" type="password" placeholder="مفتاح Groq يبدأ بـ gsk_ ‏(وليس Grok)" style="flex:1;min-width:200px" autocomplete="off">
+    <button class="sec" id="test" type="button">اختبار المفتاح</button>
+   </div>
+   <p class="note" id="testMsg">مفتاح Groq من console.groq.com ← API Keys.</p>
+   <label>كلمات وأسماء مهمة (اختياري)</label>
+   <input id="vocab" placeholder="مثال: أحمد، مشروع النور، ERP">
+   <label>مفتاح Claude للتلخيص (اختياري)</label>
+   <input id="ckey" type="password" placeholder="sk-ant-..." autocomplete="off">
+   <p class="note">المفاتيح تُحفظ في متصفحك فقط.</p>
+  </details>
+ </section>
+
+ <section class="card no-print" id="recCard">
+  <div class="row between">
+   <span id="timer">00:00</span>
+   <div class="row">
+    <select id="lang">
+     <option value="ar-EG">عربي (مصري)</option>
+     <option value="ar-SA">عربي (فصحى/خليجي)</option>
+     <option value="en-US">English</option>
+    </select>
+    <button id="btn" type="button">بدء التسجيل</button>
+   </div>
+  </div>
+  <div class="meter" id="meterBox"><div id="lvl"></div></div>
+  <p style="margin:10px 0 0"><span class="badge" id="engine"></span></p>
+  <p id="msg" class="note"></p>
+  <div id="live" class="raw hide"></div>
+ </section>
+
+ <section class="card no-print hide" id="reviewCard">
+  <strong>راجع النص قبل التقرير</strong>
+  <p class="note">اسمع التسجيل وصحّح أي كلمة خاطئة، ثم أنشئ التقرير.</p>
+  <div id="audios"></div>
+  <textarea id="transcript" dir="auto" style="margin-top:10px"></textarea>
+  <div class="row" style="margin-top:12px">
+   <button id="gen" type="button">إنشاء التقرير</button>
+   <button class="sec" id="discard" type="button">تجاهل</button>
+  </div>
+ </section>
+
+ <section class="card hide" id="outCard">
+  <div class="row between no-print" style="margin-bottom:12px">
+   <strong id="status"></strong>
+   <div class="row">
+    <button class="sec" id="again" type="button">اجتماع جديد</button>
+    <button id="print" type="button">🖨️ طباعة / حفظ PDF</button>
+   </div>
+  </div>
+  <div id="report" contenteditable="true"></div>
+ </section>
+</div>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const fmt = s => `${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;
+const store = {
+  get: k => { try { return localStorage.getItem(k) || ""; } catch { return ""; } },
+  set: (k, v) => { try { localStorage.setItem(k, v); } catch {} }
+};
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+const PROVIDERS = {
+  groq:   { url: "https://api.groq.com/openai/v1",  model: "whisper-large-v3", prefix: "gsk_" },
+  openai: { url: "https://api.openai.com/v1",       model: "whisper-1",        prefix: "sk-"  }
+};
+const cfg = () => ({
+  provider: $("provider").value, key: $("tkey").value.trim(), claude: $("ckey").value.trim(),
+  vocab: $("vocab").value.trim(), lang: $("lang").value
+});
+
+/* ---------- Recorder (MediaRecorder + level meter) ---------- */
+class Recorder {
+  async start(onLevel) {
+    this.onLevel = onLevel;
+    this.stream = await navigator.mediaDevices.getUserMedia({
+      audio: { channelCount: 1, echoCancellation: false, noiseSuppression: false, autoGainControl: true }
+    });
+    this.mime = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"].find(t => MediaRecorder.isTypeSupported(t)) || "";
+    this.segs = []; this.live = true;
+    this._next();
+    this.rotate = setInterval(() => this.mr.stop(), 8 * 60 * 1000); // independent segments
+    this._meter();
+  }
+  _next() {
+    const chunks = [];
+    const mr = this.mr = new MediaRecorder(this.stream, this.mime ? { mimeType: this.mime, audioBitsPerSecond: 64000 } : undefined);
+    mr.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
+    mr.onstop = () => {
+      this.segs.push(new Blob(chunks, { type: mr.mimeType }));
+      if (this.live) return this._next();
+      this._cleanup(); this.resolve(this.segs);
+    };
+    mr.start(1000);
+  }
+  stop() {
+    return new Promise(res => { this.resolve = res; this.live = false; clearInterval(this.rotate); this.mr.stop(); });
+  }
+  _meter() {
+    try {
+      this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const an = this.ctx.createAnalyser(); an.fftSize = 256;
+      this.ctx.createMediaStreamSource(this.stream).connect(an);
+      const buf = new Uint8Array(an.frequencyBinCount);
+      const loop = () => {
+        an.getByteTimeDomainData(buf);
+        let peak = 0; for (const v of buf) peak = Math.max(peak, Math.abs(v - 128));
+        this.onLevel(Math.min(100, peak * 2));
+        this.raf = requestAnimationFrame(loop);
+      };
+      loop();
+    } catch {}
+  }
+  _cleanup() {
+    cancelAnimationFrame(this.raf);
+    this.stream.getTracks().forEach(t => t.stop());
+    try { this.ctx.close(); } catch {}
+    this.onLevel(0);
+  }
+}
+
+/* ---------- Browser speech recognition (fallback) ---------- */
+class BrowserSTT {
+  constructor(lang, onText) { this.lang = lang; this.onText = onText; this.final = ""; this.interim = ""; }
+  start() {
+    const r = this.r = new SR();
+    this.live = true; r.lang = this.lang; r.continuous = true; r.interimResults = true;
+    r.onresult = e => {
+      let interim = "";
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const t = e.results[i][0].transcript.trim(); if (!t) continue;
+        if (e.results[i].isFinal) this.final += t + ". "; else interim += t + " ";
+      }
+      this.interim = interim; this.onText(this.final + interim);
+    };
+    r.onend = () => { this._flush(); if (this.live) setTimeout(() => { try { r.start(); } catch {} }, 300); };
+    r.onerror = e => { if (e.error === "not-allowed") this.onText("", "denied"); };
+    r.start();
+  }
+  _flush() { if (this.interim.trim()) { this.final += this.interim.trim() + ". "; this.interim = ""; } }
+  stop() {
+    return new Promise(res => {
+      this.live = false; try { this.r.stop(); } catch {}
+      setTimeout(() => { this._flush(); res(this.final.trim()); }, 900);
+    });
+  }
+}
+
+/* ---------- Transcription (Whisper) ---------- */
+async function transcribe(blobs, { provider, key, lang, vocab }, onProgress) {
+  const p = PROVIDERS[provider], parts = [];
+  const valid = blobs.filter(b => b.size > 2000);
+  for (const [i, b] of valid.entries()) {
+    onProgress(i + 1, valid.length);
+    const fd = new FormData();
+    fd.append("file", b, "audio." + (b.type.includes("mp4") ? "mp4" : "webm"));
+    fd.append("model", p.model);
+    fd.append("language", lang.slice(0, 2));
+    fd.append("temperature", "0");
+    fd.append("response_format", "text");
+    if (vocab) fd.append("prompt", vocab);
+    const r = await fetch(p.url + "/audio/transcriptions", { method: "POST", headers: { Authorization: "Bearer " + key }, body: fd });
+    if (!r.ok) throw new Error(`${r.status} ${(await r.text()).slice(0, 140)}`);
+    parts.push((await r.text()).trim());
+  }
+  return parts.join("\n").trim();
+}
+
+/* ---------- Summaries ---------- */
+async function claudeSummary(text, key) {
+  const r = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
+    body: JSON.stringify({
+      model: "claude-sonnet-5-5", max_tokens: 1800,
+      system: "أنت كاتب تقارير اجتماعات. النص تفريغ صوتي وقد يحتوي أخطاء إملائية، فصحّح المعنى الواضح ولا تخترع معلومات. أجب بـ JSON فقط وبنفس لغة النص: {\"title\":\"\",\"summary\":\"فقرة قصيرة\",\"points\":[],\"decisions\":[],\"actions\":[\"المهمة - المسؤول إن ذُكر\"]}",
+      messages: [{ role: "user", content: text }]
+    })
+  });
+  if (!r.ok) throw new Error(r.status);
+  const j = await r.json();
+  const raw = j.content.map(c => c.text || "").join("");
+  return JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1));
+}
+function localSummary(text) {
+  const sents = text.split(/[.!?؟\n]+/).map(s => s.trim()).filter(s => s.split(/\s+/).length > 3);
+  const stop = new Set("في من على إلى عن مع هذا هذه ذلك التي الذي أن إن كان كانت ما لا the a an of to and is in that it for on with".split(" "));
+  const freq = {};
+  sents.forEach(s => s.split(/\s+/).forEach(w => { if (!stop.has(w) && w.length > 2) freq[w] = (freq[w] || 0) + 1; }));
+  const score = s => s.split(/\s+/).reduce((a, w) => a + (freq[w] || 0), 0) / Math.sqrt(s.split(/\s+/).length);
+  const points = sents.map((s, i) => ({ s, i, v: score(s) })).sort((a, b) => b.v - a.v).slice(0, 6).sort((a, b) => a.i - b.i).map(x => x.s);
+  const actions = sents.filter(s => /قرر|اتفقنا|سيتم|يجب|لازم|هنعمل|decid|agree|will|should/i.test(s)).slice(0, 5);
+  return { title: "تقرير اجتماع", summary: points.slice(0, 2).join(". ") + ".", points, decisions: [], actions };
+}
+
+/* ---------- Report ---------- */
+const list = a => a && a.length ? "<ul>" + a.map(x => `<li>${esc(x)}</li>`).join("") + "</ul>" : '<p class="note">لا يوجد.</p>';
+function renderReport(d, text, meta) {
+  $("report").innerHTML = `
+    <h1>${esc(d.title || "تقرير اجتماع")}</h1>
+    <p class="note">${esc(meta.date)} &nbsp;|&nbsp; المدة: ${meta.dur}</p>
+    <h2>الملخص</h2><p>${esc(d.summary || "")}</p>
+    <h2>النقاط المهمة</h2>${list(d.points)}
+    <h2>القرارات</h2>${list(d.decisions)}
+    <h2>المهام المطلوبة</h2>${list(d.actions)}
+    <h2>النص الكامل</h2><p class="raw">${esc(text)}</p>`;
+}
+
+/* ---------- App state & UI ---------- */
+const S = { rec: null, stt: null, running: false, t0: 0, started: null, ticker: 0, wake: null, dur: "00:00" };
+const msg = (t, err = false) => { $("msg").textContent = t; $("msg").className = "note" + (err ? " err" : ""); $("msg").style.color = err ? "var(--red)" : ""; };
+const show = (id, on) => $(id).classList.toggle("hide", !on);
+
+function refreshEngine() {
+  const { key, provider } = cfg(), whisper = !!key;
+  const b = $("engine");
+  b.className = "badge " + (whisper ? "ok" : "warn");
+  b.textContent = whisper ? `🟢 تفريغ دقيق: Whisper (${provider === "groq" ? "Groq" : "OpenAI"})` : "🟠 تعرّف المتصفح (دقة أقل) – أضف مفتاح في الإعدادات";
+  show("meterBox", whisper);
+}
+["provider", "tkey", "ckey", "vocab", "lang"].forEach(id => {
+  $(id).value = store.get("cfg_" + id) || $(id).value;
+  $(id).addEventListener("change", () => { store.set("cfg_" + id, $(id).value.trim()); refreshEngine(); });
+});
+if (!cfg().key) $("settings").open = true;
+refreshEngine();
+
+$("test").onclick = async () => {
+  const { provider, key } = cfg(), p = PROVIDERS[provider], out = $("testMsg");
+  if (!key) return void (out.textContent = "❌ أدخل المفتاح أولًا.");
+  if (!key.startsWith(p.prefix)) return void (out.textContent = `❌ هذا لا يشبه مفتاح ${provider === "groq" ? "Groq" : "OpenAI"} (يبدأ بـ ${p.prefix}). تأكد أنك لم تستخدم مفتاح Grok الخاص بـ xAI.`);
+  out.textContent = "⏳ جارٍ الاختبار…";
+  try {
+    const r = await fetch(p.url + "/models", { headers: { Authorization: "Bearer " + key } });
+    out.textContent = r.ok ? "✅ المفتاح صحيح." : `❌ المفتاح مرفوض (${r.status}).`;
+  } catch { out.textContent = "❌ تعذّر الاتصال بالخدمة."; }
+};
+
+async function startRecording() {
+  const c = cfg();
+  msg("");
+  if (c.key) {
+    S.rec = new Recorder();
+    try { await S.rec.start(v => { $("lvl").style.width = v + "%"; }); }
+    catch { return msg("يرجى السماح باستخدام الميكروفون.", true); }
+    show("live", false);
+  } else {
+    if (!SR) return msg("متصفحك لا يدعم التعرف على الصوت. أضف مفتاح Whisper أو استخدم Chrome.", true);
+    S.stt = new BrowserSTT(c.lang, (t, err) => { if (err) { msg("يرجى السماح باستخدام الميكروفون.", true); stopRecording(); } else { $("live").textContent = t; } });
+    S.stt.start(); show("live", true); $("live").textContent = "";
+  }
+  try { S.wake = await navigator.wakeLock.request("screen"); } catch {}
+  S.running = true; S.t0 = Date.now(); S.started = new Date();
+  S.ticker = setInterval(() => { $("timer").textContent = fmt(Math.floor((Date.now() - S.t0) / 1000)); }, 500);
+  $("btn").textContent = "إيقاف"; $("btn").className = "rec";
+  ["provider", "tkey", "lang"].forEach(id => $(id).disabled = true);
+}
+
+async function stopRecording() {
+  if (!S.running) return;
+  S.running = false; clearInterval(S.ticker);
+  S.dur = fmt(Math.floor((Date.now() - S.t0) / 1000));
+  try { S.wake && S.wake.release(); } catch {}
+  $("btn").disabled = true;
+  const c = cfg();
+  let text = "", blobs = [];
+  try {
+    if (S.rec) {
+      msg("⏳ جارٍ إنهاء التسجيل…");
+      blobs = await S.rec.stop(); S.rec = null;
+      text = await transcribe(blobs, c, (i, n) => msg(`⏳ جارٍ تفريغ الصوت (${i}/${n})…`));
+    } else {
+      text = await S.stt.stop(); S.stt = null;
+    }
+  } catch (e) {
+    msg("❌ فشل التفريغ: " + e.message, true);
+  }
+  $("btn").disabled = false; $("btn").textContent = "بدء التسجيل"; $("btn").className = "";
+  ["provider", "tkey", "lang"].forEach(id => $(id).disabled = false);
+  if (!text || text.length < 15) {
+    if (!$("msg").textContent.startsWith("❌")) msg("لم يتم التقاط كلام كافٍ. اقترب من الميكروفون وراقب الشريط الأزرق.", true);
+    if (!blobs.length) return;
+  } else { msg(""); }
+  showReview(text, blobs);
+}
+
+function showReview(text, blobs) {
+  $("transcript").value = text;
+  $("audios").innerHTML = "";
+  blobs.filter(b => b.size > 2000).forEach(b => {
+    const a = document.createElement("audio"); a.controls = true; a.src = URL.createObjectURL(b);
+    $("audios").appendChild(a);
+  });
+  show("reviewCard", true); show("recCard", false);
+}
+
+$("gen").onclick = async () => {
+  const text = $("transcript").value.trim();
+  if (text.length < 15) return;
+  show("reviewCard", false); show("outCard", true);
+  $("report").innerHTML = ""; $("status").textContent = "⏳ جارٍ إعداد التقرير…";
+  const { claude } = cfg();
+  let data = null, ai = false;
+  if (claude) { try { data = await claudeSummary(text, claude); ai = true; } catch {} }
+  if (!data) data = localSummary(text);
+  renderReport(data, text, { date: S.started.toLocaleString("ar", { dateStyle: "full", timeStyle: "short" }), dur: S.dur });
+  $("status").textContent = ai ? "✅ التقرير جاهز (Claude)" : "✅ التقرير جاهز (تلخيص محلي)";
+};
+
+function reset() {
+  ["reviewCard", "outCard"].forEach(id => show(id, false)); show("recCard", true);
+  $("timer").textContent = "00:00"; $("audios").innerHTML = ""; msg("");
+}
+$("btn").onclick = () => S.running ? stopRecording() : startRecording();
+$("discard").onclick = reset;
+$("again").onclick = reset;
+$("print").onclick = () => window.print();
+</script>
+</body>
+</html>
