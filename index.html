@@ -55,6 +55,7 @@ details summary{cursor:pointer;color:var(--mut)}
     <button id="btn">بدء التسجيل</button>
    </div>
   </div>
+  <div style="height:6px;background:var(--bd);border-radius:4px;margin-top:12px"><div id="lvl" style="height:100%;width:0;background:var(--pri);border-radius:4px;transition:width .08s"></div></div><p class="note">الشريط الأزرق يتحرك مع الصوت. لو ثابت يبقى الميكروفون مش بيلتقط كلامك.</p>
   <div id="live">النص المباشر سيظهر هنا…</div>
   <p class="note" id="warn"></p>
  </div>
@@ -89,32 +90,57 @@ if(!SR)$("warn").textContent="⚠️ متصفحك لا يدعم التعرف ع�
 
 const fmt=s=>String(Math.floor(s/60)).padStart(2,"0")+":"+String(s%60).padStart(2,"0");
 
+let lastInterim="",stream,actx,raf;
+async function meter(){
+  try{
+    stream=await navigator.mediaDevices.getUserMedia({audio:true});
+    actx=new AudioContext();const an=actx.createAnalyser();an.fftSize=256;
+    actx.createMediaStreamSource(stream).connect(an);
+    const buf=new Uint8Array(an.frequencyBinCount);
+    const loop=()=>{an.getByteTimeDomainData(buf);let m=0;for(const v of buf)m=Math.max(m,Math.abs(v-128));
+      $("lvl").style.width=Math.min(100,m*1.6)+"%";raf=requestAnimationFrame(loop)};loop();
+  }catch(e){}
+}
+function stopMeter(){cancelAnimationFrame(raf);try{stream.getTracks().forEach(t=>t.stop());actx.close()}catch(e){}$("lvl").style.width="0"}
+
 function start(){
   if(!SR)return;
-  final="";$("live").textContent="";
+  final="";lastInterim="";$("live").textContent="";$("warn").textContent="";
   rec=new SR();rec.lang=$("lang").value;rec.continuous=true;rec.interimResults=true;
   rec.onresult=e=>{
     let interim="";
     for(let i=e.resultIndex;i<e.results.length;i++){
-      const r=e.results[i];
-      if(r.isFinal)final+=r[0].transcript.trim()+". ";else interim+=r[0].transcript;
+      const r=e.results[i],t=r[0].transcript.trim();
+      if(!t)continue;
+      if(r.isFinal)final+=t+". ";else interim+=t+" ";
     }
+    lastInterim=interim;
     $("live").textContent=final+interim;$("live").scrollTop=1e6;
   };
-  rec.onend=()=>{if(running)try{rec.start()}catch(e){}};
-  rec.onerror=e=>{if(e.error==="not-allowed"){$("warn").textContent="يرجى السماح باستخدام الميكروفون.";stop()}};
-  rec.start();running=true;startedAt=new Date();t0=Date.now();
+  rec.onend=()=>{
+    if(lastInterim.trim()){final+=lastInterim.trim()+". ";lastInterim=""}
+    if(running)setTimeout(()=>{try{rec.start()}catch(e){}},300);
+  };
+  rec.onerror=e=>{
+    if(e.error==="not-allowed"||e.error==="service-not-allowed"){$("warn").textContent="يرجى السماح باستخدام الميكروفون.";stop()}
+    else if(e.error==="network")$("warn").textContent="⚠️ التعرف على الصوت يحتاج اتصال بالإنترنت.";
+    else if(e.error==="audio-capture")$("warn").textContent="⚠️ لم يتم العثور على ميكروفون.";
+  };
+  rec.start();meter();running=true;startedAt=new Date();t0=Date.now();
   tick=setInterval(()=>$("timer").textContent=fmt(Math.floor((Date.now()-t0)/1000)),500);
   $("rec").classList.add("on");$("btn").textContent="إيقاف وتلخيص";$("btn").className="rec";
 }
 function stop(){
   running=false;try{rec.stop()}catch(e){}
-  clearInterval(tick);
+  clearInterval(tick);stopMeter();
   $("rec").classList.remove("on");$("btn").textContent="بدء التسجيل";$("btn").className="";
   const dur=fmt(Math.floor((Date.now()-t0)/1000));
-  if(final.trim().length<20){$("warn").textContent="لم يتم التقاط كلام كافٍ للتلخيص.";return}
-  $("warn").textContent="";
-  summarize(dur);
+  setTimeout(()=>{
+    if(lastInterim.trim()){final+=lastInterim.trim()+". ";lastInterim=""}
+    if(final.trim().length<20){$("warn").textContent="لم يتم التقاط كلام كافٍ للتلخيص. اقترب من الميكروفون وراقب الشريط الأزرق.";return}
+    $("warn").textContent="";
+    summarize(dur);
+  },900);
 }
 $("btn").onclick=()=>running?stop():start();
 
